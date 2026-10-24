@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>高校野球 打撃成績</title>
+<style>
+:root{--navy:#102b46;--blue:#1769aa;--bg:#f3f6fa;--line:#dce4ed;--text:#182433;--muted:#66788a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif}
+header{background:linear-gradient(120deg,#102b46,#1769aa);color:white;padding:22px 16px}header .wrap,main{max-width:1200px;margin:auto}h1{font-size:clamp(22px,4vw,32px);margin:0 0 5px}header p{margin:0;color:#dcecff}
+main{padding:16px 12px 40px}.note{background:#fff8df;border:1px solid #f0d98c;padding:12px;border-radius:10px;margin-bottom:14px;font-size:14px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.tab,.btn{border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}.tab{background:white;border:1px solid var(--line)}.tab.active{background:var(--navy);color:white}.btn{background:var(--blue);color:white}.btn.secondary{background:#e8eef5;color:var(--navy)}.btn.danger{background:#a83232}
+.panel{background:white;border:1px solid var(--line);border-radius:12px;padding:15px;margin-bottom:14px}h2{font-size:19px;margin:0 0 12px}.row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.field{display:flex;flex-direction:column;gap:5px;flex:1;min-width:140px}.field label{font-size:13px;color:var(--muted);font-weight:700}input,select{font:inherit;padding:10px;border:1px solid #cbd5e1;border-radius:8px;width:100%;background:white}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:14px}.stat{background:white;border:1px solid var(--line);border-radius:10px;padding:12px}.stat span{display:block;color:var(--muted);font-size:12px}.stat strong{font-size:23px}
+.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:9px}table{border-collapse:collapse;width:100%;white-space:nowrap;font-size:13px}th,td{padding:9px 10px;border-bottom:1px solid #e8edf3;text-align:right}th{background:#edf3f8;color:#33475b}td:first-child,th:first-child{text-align:left}tr:last-child td{border-bottom:0}.avg{font-weight:800;color:#0d5e9c}.hidden{display:none}.small{font-size:12px;color:var(--muted)}.empty{text-align:center;padding:22px;color:var(--muted)}.entrygrid{display:grid;grid-template-columns:repeat(4,minmax(70px,1fr));gap:8px}.entryplayer{border:1px solid var(--line);padding:12px;border-radius:10px;margin:10px 0}.entryplayer h3{margin:0 0 9px;font-size:15px}.entrygrid label{font-size:12px;color:var(--muted)}.entrygrid input{padding:8px}
+@media(max-width:600px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.entrygrid{grid-template-columns:repeat(2,minmax(70px,1fr))}.panel{padding:12px}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><h1> 高校野球 打撃成績ボード</h1><p>シーズン通算・大会別・試合別をチームで共有</p></div></header>
+<main>
+<div class="note" id="status">Firebase設定が必要です。READMEの手順を完了すると、共有データベースに接続できます。</div>
+<div class="panel"><div class="row" style="align-items:center"><div><strong id="authState">閲覧モード</strong><div class="small" id="authMessage">成績は共有データベースから読み込みます。</div></div><div style="flex:1"></div><button class="btn secondary" id="loginBtn">記録係ログイン</button><button class="btn secondary hidden" id="logoutBtn">ログアウト</button></div>
+<div id="loginBox" class="hidden" style="margin-top:12px"><div class="row"><div class="field"><label for="email">記録係メールアドレス</label><input id="email" type="email" autocomplete="username"></div><div class="field"><label for="password">パスワード</label><input id="password" type="password" autocomplete="current-password"></div><button class="btn" id="doLogin">ログイン</button></div><p class="small">記録係アカウントはFirebase Consoleで事前に作成してください。</p></div></div>
+<button onclick="sendVerificationEmail()">
+  確認メールを送信
+</button><div class="tabs"><button class="tab active" data-tab="stats">成績一覧</button><button class="tab" data-tab="entry">試合を登録</button><button class="tab" data-tab="players">選手管理</button><button class="tab" data-tab="events">大会管理</button></div>
+<section id="stats" class="view">
+<div class="stats"><div class="stat"><span>登録選手</span><strong id="playerCount">0</strong></div><div class="stat"><span>登録試合</span><strong id="gameCount">0</strong></div><div class="stat"><span>打率（選手合算）</span><strong id="teamAvg">—</strong></div><div class="stat"><span>チーム安打</span><strong id="teamHits">0</strong></div></div>
+<div class="panel"><div class="row" style="margin-bottom:12px"><div class="field"><label for="scope">集計範囲</label><select id="scope"><option value="season">シーズン通算</option><option value="event">大会別</option><option value="game">試合別</option></select></div><div class="field" id="eventFilterBox"><label for="eventFilter">大会</label><select id="eventFilter"><option value="">大会を選択</option></select></div><div class="field hidden" id="gameFilterBox"><label for="gameFilter">試合</label><select id="gameFilter"><option value="">試合を選択</option></select></div><div class="field"><label for="sort">並べ替え</label><select id="sort"><option value="avg">打率順</option><option value="h">安打数順</option><option value="hr">本塁打順</option><option value="rbi">打点順</option><option value="name">選手名順</option></select></div><div class="field"><label for="search">選手検索</label><input id="search" placeholder="選手名"></div></div>
+<div class="tablewrap"><table><thead><tr><th>選手名</th><th>試合</th><th>打席</th><th>打数</th><th>安打</th><th>打率</th><th>出塁率</th><th>長打率</th><th>二塁打</th><th>三塁打</th><th>本塁打</th><th>打点</th><th>得点</th><th>四球</th><th>死球</th><th>三振</th><th>犠打</th><th>犠飛</th><th>盗塁</th></tr></thead><tbody id="statsBody"></tbody></table></div></div>
+</section>
+<section id="entry" class="view hidden"><div class="panel"><h2>試合情報</h2><div class="row"><div class="field"><label>試合日</label><input id="gameDate" type="date"></div><div class="field"><label>対戦校</label><input id="opponent" placeholder="対戦校名"></div><div class="field"><label>大会・区分</label><select id="gameEvent"></select></div><div class="field"><label>メモ</label><input id="gameNote" placeholder="任意"></div></div></div><div class="panel"><h2>選手ごとの成績</h2><p class="small">出場した選手だけ入力。未入力欄は0として保存します。</p><div id="entryRows"></div><button class="btn" id="saveGame">試合成績を保存</button></div><div class="panel"><h2>保存済み試合</h2><div id="gameList"></div></div></section>
+<section id="players" class="view hidden"><div class="panel"><h2>選手を登録</h2><div class="row"><div class="field"><label>選手名</label><input id="playerName" placeholder="選手名"></div><div class="field"><label>背番号</label><input id="uniform" type="number" min="0" placeholder="任意"></div><button class="btn adminOnly" id="addPlayer">選手を追加</button></div></div><div class="panel"><h2>登録選手</h2><div id="playerList"></div></div></section>
+<section id="events" class="view hidden"><div class="panel"><h2>大会を登録</h2><div class="row"><div class="field"><label>大会名</label><input id="eventName" placeholder="例：秋季大会"></div><button class="btn adminOnly" id="addEvent">大会を追加</button></div></div><div class="panel"><h2>登録大会</h2><div id="eventList"></div></div></section>
+</main>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendEmailVerification } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+window.sendVerificationEmail = async () => {
+  if (!auth.currentUser) {
+    alert('先に記録係としてログインしてください。');
+    return;
+  }
+  try {
+    await sendEmailVerification(auth.currentUser);
+    alert('確認メールを送信しました。メールを開いて確認リンクを押してください。');
+  } catch (e) {
+    alert('送信エラー: ' + e.message);
+  }
+};import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// READMEの手順で取得したFirebase設定をここに貼り付けてください。
+const firebaseConfig = {
+
+    apiKey: "AIzaSyDY52D37Btag0lyZ-otVaYCVRl73nJ9Pv8",
+    authDomain: "battingscore-43853.firebaseapp.com",
+    projectId: "battingscore-43853",
+    storageBucket: "battingscore-43853.firebasestorage.app",
+    messagingSenderId: "487135809321",
+    appId: "1:487135809321:web:71d929e84ac1cc3f4c3138",
+    measurementId: "G-3499ZXGSNX"
+};
+const configured = firebaseConfig.apiKey !== "YOUR_API_KEY" && firebaseConfig.projectId !== "YOUR_PROJECT_ID";
+const $ = id => document.getElementById(id);
+const statFields=[['pa','打席'],['ab','打数'],['h','安打'],['d2','二塁打'],['d3','三塁打'],['hr','本塁打'],['rbi','打点'],['runs','得点'],['bb','四球'],['hbp','死球'],['k','三振'],['sh','犠打'],['sf','犠飛'],['sb','盗塁']];
+let app,auth,db,user=null,players=[],events=[],games=[],unsubs=[];
+const blank=()=>Object.fromEntries(statFields.map(([k])=>[k,0]));
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>n?Number(n).toFixed(3).replace(/^0/,''):'—';
+function message(s){$('status').textContent=s}
+if(configured){
+app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);
+
+onAuthStateChanged(auth,u=>{
+  user=u;
+  updateAuth();
+  if(u){
+    alert(
+      'ログインメール: ' + u.email +
+      '\nメール確認済み: ' + u.emailVerified
+    );
+  }
+});
+watchData();
+$('status').textContent='共有データベースに接続中です。';
+}else{
+message('セットアップ待ち：READMEのFirebase設定を行ってください。');
+}
+function updateAuth(){
+$('authState').textContent=user?'記録係ログイン中':'閲覧モード';
+$('authMessage').textContent=user?(user.email||'ログイン済み'):'成績の閲覧ができます。編集には記録係ログインが必要です。';
+$('loginBtn').classList.toggle('hidden',!!user);$('logoutBtn').classList.toggle('hidden',!user);document.querySelectorAll('.adminOnly').forEach(b=>b.disabled=!user);$('saveGame').disabled=!user;
+}
+function watchData(){
+const specs=[['players',v=>players=v],['events',v=>events=v],['games',v=>games=v]];
+specs.forEach(([name,assign])=>{const unsub=onSnapshot(collection(db,name),snap=>{assign(snap.docs.map(d=>({id:d.id,...d.data()})));renderAll();},err=>message('データ読み込みエラー：FirestoreのSecurity Rulesを確認してください。'));unsubs.push(unsub)});
+}
+$('loginBtn').onclick=()=> $('loginBox').classList.toggle('hidden');
+$('doLogin').onclick=async()=>{try{await signInWithEmailAndPassword(auth,$('email').value.trim(),$('password').value);$('loginBox').classList.add('hidden');message('ログインしました。')}catch(e){alert('ログインできませんでした。メールアドレスとパスワードを確認してください。')}};
+$('logoutBtn').onclick=()=>signOut(auth);
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.view').forEach(v=>v.classList.toggle('hidden',v.id!==b.dataset.tab))});
+
+$('addPlayer').onclick=async()=>{
+  if(!user)return alert('記録係としてログインしてください。');
+  let name=$('playerName').value.trim();
+  if(!name)return alert('選手名を入力してください。');
+  try{
+    await addDoc(collection(db,'players'),{
+      name,
+      uniform:$('uniform').value||'',
+      createdAt:Date.now()
+    });
+    $('playerName').value='';
+    $('uniform').value='';
+    alert('選手を登録しました！');
+  }catch(e){
+    console.error('選手登録エラー:',e);
+    alert('選手登録エラー:\nコード: '+(e.code||'不明')+'\n詳細: '+(e.message||e));
+  }
+};
+$('addEvent').onclick=async()=>{if(!user)return alert('記録係としてログインしてください。');let name=$('eventName').value.trim();if(!name)return alert('大会名を入力してください。');try{await addDoc(collection(db,'events'),{name,createdAt:Date.now()});$('eventName').value='';}catch(e){alert('保存できませんでした。')}};
+window.delPlayer=async id=>{if(user&&confirm('選手を削除しますか？過去の試合データは残ります。'))try{await deleteDoc(doc(db,'players',id))}catch(e){alert('削除できませんでした。')}};
+window.delEvent=async id=>{if(user&&confirm('大会を削除しますか？'))try{await deleteDoc(doc(db,'events',id))}catch(e){alert('削除できませんでした。')}};
+window.delGame=async id=>{if(user&&confirm('試合とその成績を削除しますか？'))try{await deleteDoc(doc(db,'games',id))}catch(e){alert('削除できませんでした。')}};
+function renderAll(){renderFilters();renderPlayers();renderEvents();renderEntry();renderGames();renderStats();updateAuth()}
+function renderFilters(){
+const ev=$('eventFilter').value,ga=$('gameFilter').value;
+$('eventFilter').innerHTML='<option value="">大会を選択</option>'+events.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('');
+if(events.some(e=>e.id===ev))$('eventFilter').value=ev;
+$('gameFilter').innerHTML='<option value="">試合を選択</option>'+[...games].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(g=>`<option value="${g.id}">${esc(g.date)} ${esc(g.opponent)}</option>`).join('');
+if(games.some(g=>g.id===ga))$('gameFilter').value=ga;
+$('gameEvent').innerHTML='<option value="">大会・区分なし</option>'+events.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('');
+const scope=$('scope').value;$('eventFilterBox').classList.toggle('hidden',scope!=='event');$('gameFilterBox').classList.toggle('hidden',scope!=='game');
+}
+function renderPlayers(){$('playerList').innerHTML=players.length?players.map(p=>`<div class="row" style="justify-content:space-between;padding:8px;border-bottom:1px solid #eee"><span>${p.uniform?'#'+esc(p.uniform)+' ':''}${esc(p.name)}</span><button class="btn danger adminOnly" onclick="delPlayer('${p.id}')">削除</button></div>`).join(''):'<p class="empty">選手はまだ登録されていません。</p>'}
+
+function renderEvents() {
+  $('eventList').innerHTML = events.length
+    ? events.map(e => `
+        <div class="row" style="justify-content:space-between;padding:8px;border-bottom:1px solid #eee">
+          <span>${esc(e.name)}</span>
+          <button class="btn danger adminOnly" onclick="delEvent('${e.id}')">削除</button>
+        </div>
+      `).join('')
+    : '<p class="empty">大会はまだ登録されていません。</p>';
+}
+
+function renderEntry(){$('entryRows').innerHTML=players.length?players.map(p=>`<div class="entryplayer"><h3>${p.uniform?'#'+esc(p.uniform)+' ':''}${esc(p.name)}</h3><div class="entrygrid">${statFields.map(([k,l])=>`<div><label>${l}<input type="number" min="0" step="1" value="0" data-pid="${p.id}" data-key="${k}"></label></div>`).join('')}</div></div>`).join(''):'<p class="empty">先に選手を登録してください。</p>'}
+function renderGames(){$('gameList').innerHTML=games.length?[...games].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(g=>`<div class="row" style="justify-content:space-between;padding:9px;border-bottom:1px solid #eee"><span><strong>${esc(g.date)}${esc(g.opponent)}</strong><div class="small">${esc(events.find(e=>e.id===g.eventId)?.name||'大会区分なし')}  ${g.rows?.length||0}人</div></span><button class="btn danger adminOnly" onclick="delGame('${g.id}')">削除</button></div>`).join(''):'<p class="empty">試合はまだ登録されていません。</p>'}
+function summarize(list,pid){const t=blank();let appearances=0;list.forEach(g=>{const r=(g.rows||[]).find(x=>x.pid===pid);if(!r)return;appearances++;statFields.forEach(([k])=>t[k]+=Number(r[k]||0))});t.games=appearances;t.singles=t.h-t.d2-t.d3-t.hr;t.tb=t.singles+2*t.d2+3*t.d3+4*t.hr;t.avg=t.ab?t.h/t.ab:0;t.obp=(t.ab+t.bb+t.hbp+t.sf)?(t.h+t.bb+t.hbp)/(t.ab+t.bb+t.hbp+t.sf):0;t.slg=t.ab?t.tb/t.ab:0;return t}
+function renderStats(){
+let selected=games;
+if($('scope').value==='event'){selected=games.filter(g=>g.eventId===$('eventFilter').value)}
+if($('scope').value==='game'){selected=games.filter(g=>g.id===$('gameFilter').value)}let data=players.map(p=>({p,t:summarize(selected,p.id)})).filter(x=>x.p.name.toLowerCase().includes($('search').value.trim().toLowerCase()));
+const sk=$('sort').value;data.sort((a,b)=>sk==='name'?a.p.name.localeCompare(b.p.name,'ja'):b.t[sk]-a.t[sk]);
+const ab=data.reduce((s,x)=>s+x.t.ab,0),h=data.reduce((s,x)=>s+x.t.h,0);$('playerCount').textContent=players.length;$('gameCount').textContent=selected.length;$('teamAvg').textContent=ab?fmt(h/ab):'—';$('teamHits').textContent=h;
+$('statsBody').innerHTML=data.length?data.map(({p,t})=>`<tr><td>${p.uniform?'#'+esc(p.uniform)+' ':''}${esc(p.name)}</td><td>${t.games}</td><td>${t.pa}</td><td>${t.ab}</td><td>${t.h}</td><td class="avg">${fmt(t.avg)}</td><td>${fmt(t.obp)}</td><td>${fmt(t.slg)}</td><td>${t.d2}</td><td>${t.d3}</td><td>${t.hr}</td><td>${t.rbi}</td><td>${t.runs}</td><td>${t.bb}</td><td>${t.hbp}</td><td>${t.k}</td><td>${t.sh}</td><td>${t.sf}</td><td>${t.sb}</td></tr>`).join(''):'<tr><td colspan="19" class="empty">表示できる成績がありません。</td></tr>';
+}
+$('saveGame').onclick=async()=>{if(!user)return alert('記録係としてログインしてください。');if(!players.length)return alert('先に選手を登録してください。');const by={};document.querySelectorAll('#entryRows input').forEach(i=>{(by[i.dataset.pid]??={pid:i.dataset.pid,...blank()})[i.dataset.key]=Number(i.value)||0});const rows=Object.values(by).filter(r=>statFields.some(([k])=>r[k]>0));if(!rows.length)return alert('少なくとも1人分の成績を入力してください。');for(const r of rows){if(r.h>r.ab||r.d2+r.d3+r.hr>r.h||r.ab>r.pa||r.bb+r.hbp+r.sh+r.sf>r.pa)return alert('入力値を確認してください。安打は打数以下、長打合計は安打以下、打数は打席以下にしてください。')}
+try{await addDoc(collection(db,'games'),{date:$('gameDate').value||new Date().toISOString().slice(0,10),opponent:$('opponent').value.trim(),eventId:$('gameEvent').value||'',note:$('gameNote').value.trim(),rows,createdAt:Date.now()});$('opponent').value='';$('gameNote').value='';message('試合成績を保存しました。');alert('試合成績を保存しました。')}catch(e){alert('保存できませんでした。FirestoreのSecurity Rulesを確認してください。')}};
+['scope','eventFilter','gameFilter','sort','search'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',()=>{if(id==='scope')renderFilters();renderStats()}));
+$('gameDate').value=new Date().toISOString().slice(0,10);
+</script>
+</body></html>
